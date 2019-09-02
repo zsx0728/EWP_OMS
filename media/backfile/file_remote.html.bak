@@ -1,0 +1,363 @@
+{% extends "AUTH/navbar.html" %}
+{% load staticfiles %}
+{% block title %}
+    <title>远程文件管理</title>
+    <style>
+        textarea {
+            white-space: pre;
+            font-family: Courier, monospace;
+            width:100%;
+            height:460px;
+            background-color: black;
+            color: #ffffff;
+        }
+    </style>
+{% endblock %}
+{% block content %}
+    <div class="container">
+        <h2>
+            远程文件管理
+            <small class="text-danger">{{ salt_server.idc.name }} -- {{ salt_server.url }} -- {{ salt_server.role }}</small>
+{#            Server选择#}
+            <label for="server" disabled="disabled"></label>
+            <div class="btn-group pull-right dropdown">
+                <a href="#" class="btn btn-info dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">
+                    &nbsp;SaltServer&nbsp;<span class="caret"></span></a>
+                <ul class="dropdown-menu">
+                    {% for s in server_list %}
+                        <li><a href="{% url 'salt:file_remote' s.id%}">{{ s.idc.name }} -- {{ s.url }}</a></li>
+                    {% endfor %}
+                </ul>
+            </div>
+{#                SVN操作功能#}
+            <div class="btn-group pull-right">
+                <button class="btn btn-info" type="button" title="提交" onclick="svn('commit','{{ dir }}')"><span class="glyphicon glyphicon-send"></span></button>
+                <button class="btn btn-info" type="button" title="更新" onclick="svn('update','{{ dir }}')"><span class="glyphicon glyphicon-refresh"></span></button>
+                <button class="btn btn-info" type="button" title="还原" onclick="svn('revert','{{ dir }}')"><span class="glyphicon glyphicon-repeat"></span></button>
+                <button class="btn btn-info" type="button" title="检出" data-toggle="modal" data-target="#modal_checkout" ><span class="glyphicon glyphicon-export"></span></button>
+                &nbsp;&nbsp;
+            </div>
+{#                文件操作功能#}
+            <div class="btn-group pull-right">
+                <a class="btn btn-info" href="{% url 'salt:file_local' %}?updir={{ dir }}" title="返回上层"><span class="glyphicon glyphicon-chevron-up"></span></a>
+                <button class="btn btn-info" type="button" data-toggle="modal" data-target="#modal_create" title="新建" ><span class="glyphicon glyphicon-plus"></span></button>
+{#                <button class="btn btn-info" type="button" title="删除" id="delete"><span class="glyphicon glyphicon-minus"></span></button>#}
+                <button class="btn btn-info" type="button" data-toggle="modal" data-target="#modal_rename" title="重命名"><span class="glyphicon glyphicon-pencil"></span></button>
+{#                <button class="btn btn-info" type="button" data-toggle="modal" data-target="#modal_upload" title="上传"><span class="glyphicon glyphicon-open"></span></button>#}
+{#                <a class="btn btn-info" title="下载"  {% if type == 'File' %}href="/salt/media{{ dir }}{{ base }}" {% else %}href="javascript:volid(0);" disabled {% endif %}><span class="glyphicon glyphicon-save"></span></a>#}
+                <button class="btn btn-info" type="button" title="保存" id="write" ><span class="glyphicon glyphicon-floppy-saved"></span></button>
+                &nbsp;&nbsp;
+            </div>
+        </h2>
+
+        {% if error %}<div class="alert alert-danger"><a href="#" class="close" data-dismiss="alert">&times;</a>{{ error }}</div>{% endif %}
+        {% if success %}<div class="alert alert-success"><a href="#" class="close" data-dismiss="alert">&times;</a>{{ success }}</div>{% endif %}
+{#    tgt+path#}
+        <div class="row">
+            <div class="col-sm-3 col-md-3">
+                <div class="form-group">
+                     <label for="tgt">Minion</label>
+                     <select class="form-control" id="tgt" >
+                         {% for u in minions_up %}
+                         <option value="{{ u }}">{{ u }}</option>
+                         {% endfor %}
+                     </select>
+                 </div>
+            </div>
+            <div class="col-sm-9 col-md-9">
+                <div class="btn-group">
+                     <label for="path">Path</label>
+                     <div class="input-group">
+                         <input type="text" class="form-control" placeholder="File path. Ex: /etc/salt/roster" id="path" name="path">
+                         <span class="input-group-btn">
+                             <button class="btn btn-info" type="button" onclick="file_list($('#path').val())" id="search"><span class="glyphicon glyphicon-search"></span></button>
+                         </span>
+                     </div>
+                 </div>
+            </div>
+        </div>
+        {#文件列表#}
+        <div class="row">
+            <div class="col-sx-3 col-md-3">
+                <div class="form-group">
+                    <label>目录列表：</label><br>
+                    <div class="form-group">
+                        <div id="dir"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-sx-9 col-md-9" >
+                <label for="content">文件内容：</label>
+                <code id="stats"></code>
+                <textarea id="content"></textarea>
+            </div>
+        </div>
+    </div>
+{#    创建模态框#}
+    <div class="modal fade" id="modal_create" tabindex="-1" role="dialog" aria-labelledby="myModalLabel">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+                    <h2 class="modal-title text-center">新建文件夹或文件</h2>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-sm-4 col-md-4">
+                            <label class="pull-right">当前路径：</label>
+                        </div>
+                        <div class="col-sm-8 col-md-8">
+                            <span class="bg-info" id="path_c"></span>
+                        </div>
+                    </div>
+                    <br>
+                    <div class="row">
+                        <div class="col-sm-4 col-md-4">
+                            <label class="pull-right">选择类型：</label>
+                        </div>
+                        <div class="col-sm-4 col-md-4 ">
+                            <label for="type" hidden></label>
+                            <select   class="form-control" id="type">
+                                <option value="Dir">Dir</option>
+                                <option value="File">File</option>
+                            </select>
+                        </div>
+                    </div>
+                    <br>
+                    <div class="row">
+                        <div class="col-sm-4 col-md-4">
+                            <label class="pull-right">目标名称：</label>
+                        </div>
+                        <div class="col-sm-4 col-md-4">
+                            <input type="text" class="form-control" placeholder="dir or file name" id="name"
+                            onkeypress="if(event.keyCode==13) {create.click();return false;}">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-primary"  id="create">创建</button>
+                        <button type="button" class="btn btn-default" data-dismiss="modal">关闭</button>
+                    </div>
+                </div>
+            </div><!-- /.modal-content -->
+        </div><!-- /.modal-dialog -->
+    </div><!-- /.modal -->
+{#    重命名模态框#}
+    <div class="modal fade" id="modal_rename" tabindex="-1" role="dialog" aria-labelledby="myModalLabel">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+                    <h2 class="modal-title text-center">重命名文件夹或文件</h2>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-danger" id="alert" hidden></div>
+                    <div class="row">
+                        <div class="col-sm-4 col-md-4">
+                            <label class="pull-right">当前路径：</label>
+                        </div>
+                        <div class="col-sm-8 col-md-8">
+                            <span class="bg-info" id="path_r"></span>
+                        </div>
+                    </div>
+                    <br>
+                    <div class="row">
+                        <div class="col-sm-4 col-md-4">
+                            <label class="pull-right">目标类型：</label>
+                        </div>
+                        <div class="col-sm-8 col-md-8 ">
+                            <span class="bg-info">{% if type %}{{ type }}{% else %}Dir{% endif %}</span>
+                        </div>
+                    </div>
+                    <br>
+                    <div class="row">
+                        <div class="col-sm-4 col-md-4">
+                            <label class="pull-right">目标名称：</label>
+                        </div>
+                        <div class="col-sm-8 col-md-8 ">
+                            <span class="bg-info">{{ base }}</span>
+                        </div>
+                    </div>
+                    <br>
+                    <div class="row">
+                        <div class="col-sm-4 col-md-4">
+                            <label class="pull-right">新的名称：</label>
+                        </div>
+                        <div class="col-sm-4 col-md-4">
+                            <input type="text" class="form-control" placeholder="dir or file name" id="name_new" value="{{ base }}"
+                            onkeypress="if(event.keyCode==13) {rename.click();return false;}">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-primary" id="rename">重命名</button>
+                        <button type="button" class="btn btn-default" data-dismiss="modal">关闭</button>
+                    </div>
+                </div>
+            </div><!-- /.modal-content -->
+        </div><!-- /.modal-dialog -->
+    </div><!-- /.modal -->
+{#   签出模态框#}
+    <div class="modal fade" id="modal_checkout" tabindex="-1" role="dialog" aria-labelledby="myModalLabel">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+                    <h2 class="modal-title text-center">SVN签出目录</h2>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-sm-4 col-md-4">
+                            <label class="pull-right">根路径：</label>
+                        </div>
+                        <div class="col-sm-8 col-md-8">
+                            <span class="bg-info">{{ root }}</span>
+                        </div>
+                    </div>
+                    <br>
+                    <div class="row">
+                        <div class="col-sm-4 col-md-4">
+                            <label class="pull-right">SVN地址：</label>
+                        </div>
+                        <div class="col-sm-8 col-md-8">
+                            <input type="text" class="form-control" placeholder="http://svn_server:port/svn/..." id="url">
+                        </div>
+                    </div>
+                    <br>
+                    <div class="row">
+                        <div class="col-sm-4 col-md-4">
+                            <label class="pull-right">SVN账号：</label>
+                        </div>
+                        <div class="col-sm-4 col-md-4">
+                            <input type="text" class="form-control" placeholder="svn username" id="username">
+                        </div>
+                    </div>
+                    <br>
+                    <div class="row">
+                        <div class="col-sm-4 col-md-4">
+                            <label class="pull-right">SVN密码：</label>
+                        </div>
+                        <div class="col-sm-4 col-md-4 ">
+                            <input type="password" class="form-control" placeholder="svn password" id="password">
+                        </div>
+                    </div>
+                    <br>
+                    <div class="row">
+                        <div class="col-sm-4 col-md-4">
+                            <label class="pull-right">目标目录：</label>
+                        </div>
+                        <div class="col-sm-4 col-md-4">
+                            <input type="text" class="form-control" placeholder="local dir name" id="dir"
+                            onkeypress="if(event.keyCode==13) {checkout.click();return false;}">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-primary"  id="checkout">签出</button>
+                        <button type="button" class="btn btn-default" data-dismiss="modal">关闭</button>
+                    </div>
+                </div>
+            </div><!-- /.modal-content -->
+        </div><!-- /.modal-dialog -->
+    </div><!-- /.modal -->
+{% endblock %}
+{% block scripts %}
+    <script src="{% static 'salt/js/formatJSON.js' %}"></script>
+{#    <script src="{% static 'salt/js/cmd_run.js' %}"></script>#}
+{#    <script src="{% static 'salt/js/file.js' %}"></script>#}
+    <script>
+        $(document).ready(function(){
+            //创建
+            $('#create').click(function(){
+                var minion = $('#tgt').val();
+                var path = $('#path_c').html();
+                var type = $('#type').val();
+                var name = $('#name').val();
+                if(!name){alert("名称不能为空！")}
+                else if(name.indexOf(' ') > 0){alert("目标名称不能包含空格！")}
+                else{
+                    $.getJSON("{% url 'salt:file_remote_create' %}", {minion:minion,path: path,type: type, name:name,server:{{ salt_server.id }}}, function (result) {
+                        alert(result['msg']);
+                        if(result['ret']==1){file_list(path)}
+                    });
+                }
+            });
+            //重命令
+            $('#rename').click(function() {
+            var name_new = $('#name_new').val();
+            if (!name_new) {alert("新名称不能为空！")}
+            else {
+                $.getJSON("{% url 'salt:file_rename' %}", {type: '{{ type }}', dir: '{{ dir }}', name: '{{ base }}', name_new: name_new}, function (result) {
+                    alert(result['msg']);
+                    if (result['ret'] == 1) {
+                        window.location.href = '{% url 'salt:file_local' %}?base=' + name_new + '&dir=' + result['dir'];
+                    }
+                });
+            }
+        });
+            //写入文件
+            $('#write').click(function(){
+                var minion = $('#tgt').val();
+                var path = $('#path').val();
+                //alert(file_path);
+                var content = $('#content').val();
+                if(!minion){alert("Minion不能为空！")}
+                else if(!path){alert("Path不能为空！")}
+                else{
+                    $.getJSON("{% url 'salt:file_remote_write' %}", {minion:minion,path:path,content:content,server:{{ salt_server.id }} }, function (result) {
+                        alert(result);
+                    });
+                }
+            });
+
+        });
+
+        //显示目录列表功能
+        function file_list(path){
+            var tgt = $('#tgt').val();
+            if(!tgt){alert("Minion不能为空！")}
+            else if(!path){alert("Path不能为空！")}
+            else if(path !='/' && path.substr(-1) == '/'){alert("Path必须是绝对路径，以'/'开头。")}
+            else {
+                $.getJSON("{% url 'salt:file_remote_list' %}", {tgt: tgt, path: path.replace('//','/'),server_id:{{ salt_server.id }}}, function (result) {
+                    //alert(result);
+                    var type=result['type'];
+                    var path =$('#path');
+                    var path_c =$('#path_c');
+                    var dir=$('#dir');
+                    var stats=$('#stats');
+                    var content=document.getElementById('content');
+                    if (type=='dir'){
+                        var pdir=result['pdir'];
+                        var dirs=result['dirs'];
+                        path.val(pdir);
+                        path_c.html(pdir);
+                        dir.html("");
+                        stats.html("");
+                        content.value='';
+                        for (var i = 0; i<=dirs.length-1;  i++) {
+                            item = '<button type="button" class="label label-default" ' +
+                                'onclick="file_list(\'' + pdir + '/' +dirs[i] + '\')">' +
+                                dirs[i] + '</button><br>';
+                            dir.append(item);
+                        }
+                    }
+                    else if (type=='file'){
+                        content.value=result['content'];
+                        path.val(result['pdir']);
+                        path_c.html(result['pdir']);
+                        var s=result['stats'];
+                        stats.html('文件名：'+s['target']+'-'+'文件大小：'+s['size']/1024+'kb-'+'用户：'+s['user']);
+
+                    }
+                    else{
+                        alert(result['error']);
+                    }
+                });
+            }
+        }
+    </script>
+{% endblock %}

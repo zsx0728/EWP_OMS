@@ -1,0 +1,86 @@
+{% extends "AUTH/navbar.html" %}
+{% load staticfiles %}
+{% block title %}
+    <title>代码发布</title>
+{% endblock %}
+{% block content %}
+    <div class="container">
+        <h2>
+            代码发布
+            <small class="text-danger">{{ salt_server.idc.name }} -- {{ salt_server.url }} -- {{ salt_server.role }}</small>
+            <div class="btn-group pull-right">
+                <a class="btn btn-info" href="/admin/SALT/svnproject/add/" target="_blank" title="新建"><span class="glyphicon glyphicon-plus"></span></a>
+{#            Server选择#}
+                <div class="btn-group pull-right dropdown">
+                    <a href="#" class="btn btn-info dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">
+                        &nbsp;SaltServer&nbsp;<span class="caret"></span></a>
+                    <ul class="dropdown-menu">
+                        {% for s in server_list %}
+                            <li><a href="{% url 'salt:deploy' s.id%}">{{ s.idc.name }} -- {{ s.url }}</a></li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+        </h2>
+        {% if error %}<div class="alert alert-danger"><a href="#" class="close" data-dismiss="alert">&times;</a>{{ error }}</div>{% endif %}
+        {% if success %}<div class="alert alert-success"><a href="#" class="close" data-dismiss="alert">&times;</a>{{ success }}</div>{% endif %}
+
+
+        <div class="row">
+            <div class="col-sm-12 col-md-12">
+                <div class="table-responsive">
+                    <table class="table table-hover table-bordered table-striped">
+                        <thead>
+                            <tr>
+                                <th>项目名称</th>
+                                <th>项目主机</th>
+                                <th>本地地址</th>
+                                <th>SVN账号</th>
+                                <th>创建日期</th>
+                                <th>相关信息</th>
+                                <th>状态</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        {% for project in project_list %}
+                            <tbody>
+                                <tr>
+                                    <td>{{ project.name }}</td>
+                                    <td>{{ project.host }}</td>
+                                    <td><a href="{{ project.url }}" target="_blank" title="{{ project.url }}">{{ project.path }}/{{ project.target }}</a></td>
+                                    <td>{{ project.username }}</td>
+                                    <td>{{ project.create_date }}</td>
+                                    <td>{{ project.info|linebreaks }}</td>
+                                    <td>{% if project.status == "新建" %}<a href="{% url 'salt:deploy' salt_server.id %}?project_id={{ project.id }}">{{ project.status }}</a>{% else %}{{ project.status }}{% endif %}</td>
+                                    <td>
+                                        <div class="btn-group">
+                                            <a class="btn btn-info btn-xs" href="/admin/SALT/svnproject/{{ project.id }}/" target="_blank">
+                                                <span class="glyphicon glyphicon-edit">&nbsp;修改</span></a>
+                                            <button class="btn btn-info btn-xs" type="button" onclick="svn('commit','{{ project.id }}')" >
+                                                <span class="glyphicon glyphicon-send">&nbsp;提交</span></button>
+                                            <button class="btn btn-info btn-xs" type="button" onclick="svn('update','{{ project.id }}')" >
+                                                <span class="glyphicon glyphicon-refresh">&nbsp;更新</span></button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        {% endfor %}
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+{% endblock %}
+{% block scripts %}
+    <script>
+        function svn(active,project_id){
+            $.getJSON("{% url 'salt:deploy_fun' salt_server.id %}", {active:active,project_id:project_id}, function (result) {
+                alert(result['msg']);
+                if(result['add']){
+                    window.open("/admin/SALT/svnproject/add/");
+                }
+            });
+        }
+    </script>
+{% endblock %}
